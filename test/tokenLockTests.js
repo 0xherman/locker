@@ -26,7 +26,7 @@ describe("TokenLock", function () {
     tokenFactory = await TokenLockFactory.deploy();
 
     const TokenLock = await ethers.getContractFactory("TokenLock");
-    tokenLock = await TokenLock.deploy(tokenFactory.address, token.address, block.timestamp + 10, owner.address);
+    tokenLock = await TokenLock.deploy(tokenFactory.address, block.timestamp + 10, owner.address);
     DEFAULT_ADMIN_ROLE = await tokenLock.DEFAULT_ADMIN_ROLE();
     UNLOCK_ROLE = await tokenLock.UNLOCK_ROLE();
     EXTEND_ROLE = await tokenLock.EXTEND_ROLE();
@@ -247,6 +247,41 @@ describe("TokenLock", function () {
       const newLock = (await tokenFactory.getLocksByToken(token.address))[0];
       expect(await token.balanceOf(newLock)).to.equal(250);
       expect(await token.balanceOf(tokenLock.address)).to.equal(250);
+    });
+  });
+
+  describe("migrateTokenLock", () => {
+    it("Should revert if not in any roles", async () => {
+      await token.transfer(tokenLock.address, 500);
+      await expect(tokenLock.connect(addr1).migrateTokenLock())
+        .to.be.revertedWith("TokenLock: caller does not have admin role");
+    });
+
+    it("Should revert with EXTEND_ROLE", async () => {
+      await token.transfer(tokenLock.address, 500);
+      await tokenLock.grantRole(EXTEND_ROLE, addr1.address);
+      await expect(tokenLock.connect(addr1).migrateTokenLock())
+        .to.be.revertedWith("TokenLock: caller does not have admin role");
+    });
+
+    it("Should revert with UNLOCK_ROLE", async () => {
+      await token.transfer(tokenLock.address, 500);
+      await tokenLock.grantRole(UNLOCK_ROLE, addr1.address);
+      await expect(tokenLock.connect(addr1).migrateTokenLock())
+        .to.be.revertedWith("TokenLock: caller does not have admin role");
+    });
+
+    it("Should split lock if valid and DEFAULT_ADMIN_ROLE and emit an event", async () => {
+      await tokenLock.extendUnlockDate(block.timestamp + 100);
+      await token.transfer(tokenLock.address, 500);
+      await tokenLock.trackToken(token.address);
+      await expect(tokenLock.migrateTokenLock())
+        .to.emit(tokenLock, "TokenLockMigrated");
+
+      // tokenLock was instantiated outside of factory so newLock is first in factory
+      const newLock = (await tokenFactory.getLocksByToken(token.address))[0];
+      expect(await token.balanceOf(newLock)).to.equal(500);
+      expect(await token.balanceOf(tokenLock.address)).to.equal(0);
     });
   });
 });

@@ -4,36 +4,33 @@ pragma solidity 0.8.4;
 import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "./TokenLockFactory.sol";
 
 /// @title TokenLock
 /// @notice TokenLock Contract for Retromoon liquidity / token lock
 contract TokenLock is AccessControlEnumerable, Ownable {
+	using EnumerableSet for EnumerableSet.AddressSet;
 
 	// Define access roles
 	bytes32 public constant EXTEND_ROLE = keccak256("EXTEND_ROLE");
 	bytes32 public constant UNLOCK_ROLE = keccak256("UNLOCK_ROLE");
 
 	uint256 public unlockDate;
-	IERC20 token;
+	EnumerableSet.AddressSet private _tokens;
 
 	/// Factory address
 	address private _factory;
 
-	/// Unlock date extended event to emit after extension
+	/// Events to emit after value changes
 	event UnlockDateExtended(uint256 unlockDate);
-
-	/// Native currency withdrawn event to emit after withdraw
 	event Unlocked(uint256 amount, address recipient);
-
-	/// Tokens unlocked event to emit after withdraw
 	event TokensUnlocked(address tokenAddress, uint256 amount, address recipient);
-
-	/// Lock split event to emit after split
 	event LockSplit(uint256 amount, address newLock);
-
-	/// Token lock split event to emit after split
 	event TokenLockSplit(address tokenAddress, uint256 amount, address newTokenLock);
+	event TokenLockMigrated(address oldLock, address newLock);
+	event TokenTracked(address tokenAddress);
+	event TokenUntracked(address tokenAddress);
 
 	/// Modifier to require extend or admin role
 	modifier canExtend() {
@@ -49,17 +46,15 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 	}
 
 	/// Modifier to require admin role or ownership
-	modifier canSplit() {
+	modifier canMove() {
 		require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()) || owner() == _msgSender(), "TokenLock: caller does not have admin role");
 		_;
 	}
 
 	/// Create lock with link to original factory
-	constructor(address factory, address tokenAddress, uint256 _unlockDate, address owner) {
-		_factory = factory;
-		token = IERC20(tokenAddress);
-		require(token.totalSupply() > 0, "TokenLock: token has no supply");
+	constructor(address factory, uint256 _unlockDate, address owner) {
 		require(_unlockDate > block.timestamp, "TokenLock: new date must be in the future");
+		_factory = factory;
 		unlockDate = _unlockDate;
 
 		// Define administrator roles that can add/remove from given roles
@@ -78,6 +73,26 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 
 	/// Receive funds on contract
 	receive() external payable {}
+
+	/// Check if lock has a token tracked
+	function hasToken(address tokenAddress) external view returns (bool) {
+		return _tokens.contains(tokenAddress);
+	}
+
+	/// Get tracked tokens
+	function getTokens() external view returns (address[] memory) {
+		return _tokens.values();
+	}
+
+	/// Get tracked token at index
+	function getToken(uint256 index) external view returns (address) {
+		return _tokens.at(index);
+	}
+
+	/// Get number of tracked tokens
+	function getTokenCount() external view returns (uint256) {
+		return _tokens.length();
+	}
 
 	/// Extend unlock date
 	/// @param date The new unlock date
@@ -113,13 +128,40 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 	/// @param amount The amount of the token to split into new lock
 	/// @param _unlockDate The split lock unlock date
 	/// @return newLock The address of the new lock
-	function splitTokenLock(address tokenAddress, uint256 amount, uint256 _unlockDate) payable external canSplit returns (address newLock) {
+	function splitTokenLock(address tokenAddress, uint256 amount, uint256 _unlockDate) payable external canMove returns (address newLock) {
 		require(IERC20(tokenAddress).balanceOf(address(this)) >= amount, "TokenLock: not enough tokens held in lock");
 		require(_unlockDate >= unlockDate, "TokenLock: new lock unlock date cannot be before current lock unlock date");
 		require(_unlockDate > block.timestamp, "TokenLock: new lock unlock date must be in the future");
-		newLock = TokenLockFactory(_factory).createLock{value: msg.value}(tokenAddress, unlockDate);
+		newLock = TokenLockFactory(_factory).createLock{value: msg.value}(unlockDate);
+		TokenLock(payable(newLock)).trackToken(tokenAddress);
 		IERC20(tokenAddress).transfer(newLock, amount);
 		emit TokenLockSplit(tokenAddress, amount, newLock);
+	}
+
+	/// Migrate a lock completely to a new lock
+	function migrateTokenLock() payable external canMove returns (address newLock) {
+		newLock = TokenLockFactory(_factory).createLock{value: msg.value}(unlockDate);
+		uint256 length = _tokens.length();
+		for (uint256 i = 0; i < length; i++) {
+			IERC20 token = IERC20(_tokens.at(i));
+			uint256 amount = token.balanceOf(address(this));
+			IERC20(_tokens.at(i)).transfer(newLock, amount);
+		}
+		emit TokenLockMigrated(address(this), newLock);
+	}
+
+	/// Add a token to tracked list
+	function trackToken(address tokenAddress) external onlyOwner {
+		_tokens.add(tokenAddress);
+		TokenLockFactory(_factory).trackToken(payable(this), tokenAddress);
+		emit TokenTracked(tokenAddress);
+	}
+
+	/// Remove a tracked token from liest
+	function untrackToken(address tokenAddress) external onlyOwner {
+		_tokens.remove(tokenAddress);
+		TokenLockFactory(_factory).untrackToken(payable(this), tokenAddress);
+		emit TokenUntracked(tokenAddress);
 	}
 
 	/// Add new owner to roles and remove self from roles
@@ -134,5 +176,11 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 		revokeRole(UNLOCK_ROLE, _msgSender());
 		revokeRole(DEFAULT_ADMIN_ROLE, _msgSender());
 		TokenLockFactory(_factory).transferLock(payable(this), _msgSender());
+	}
+
+	/// Update the factory address
+	function changeFactory(address factoryAddress) external {
+		require(_msgSender() == _factory, "TokenLock: only the factory can update factory address");
+		_factory = factoryAddress;
 	}
 }

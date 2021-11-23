@@ -29,7 +29,7 @@ describe("TokenLockFactory", function () {
     lockFactory = await TokenLockFactory.deploy();
 
     TokenLock = await ethers.getContractFactory("TokenLock");
-    tokenLock = await TokenLock.deploy(lockFactory.address, token.address, block.timestamp + 100, owner.address);
+    tokenLock = await TokenLock.deploy(lockFactory.address, block.timestamp + 100, owner.address);
     DEFAULT_ADMIN_ROLE = await tokenLock.DEFAULT_ADMIN_ROLE();
     UNLOCK_ROLE = await tokenLock.UNLOCK_ROLE();
     EXTEND_ROLE = await tokenLock.EXTEND_ROLE();
@@ -39,13 +39,17 @@ describe("TokenLockFactory", function () {
 
   describe("getLocksByToken", () => {
     it("Should return locks linked to a token", async () => {
-      const tx1 = await lockFactory.createLock(token.address, block.timestamp + 100);
-      const tx2 = await lockFactory.createLock(token.address, block.timestamp + 200);
-      const tx3 = await lockFactory.createLock(token.address, block.timestamp + 300);
+      const tx1 = await lockFactory.createLock(block.timestamp + 100);
+      const tx2 = await lockFactory.createLock(block.timestamp + 200);
+      const tx3 = await lockFactory.createLock(block.timestamp + 300);
       // Have to get the receipts to get data
       const lock1 = (await tx1.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
       const lock2 = (await tx2.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
       const lock3 = (await tx3.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
+
+      await TokenLock.attach(lock1).trackToken(token.address);
+      await TokenLock.attach(lock2).trackToken(token.address);
+      await TokenLock.attach(lock3).trackToken(token.address);
 
       const locks = await lockFactory.getLocksByToken(token.address);
       expect(locks.length).to.equal(3);
@@ -57,15 +61,14 @@ describe("TokenLockFactory", function () {
 
   describe("getLocksByAccount", () => {
     it("Should return locks linked to an account", async () => {
-      const tx1 = await lockFactory.createLock(token.address, block.timestamp + 100);
-      const tx2 = await lockFactory.createLock(token.address, block.timestamp + 200);
-      const tx3 = await lockFactory.createLock(token.address, block.timestamp + 300);
+      const tx1 = await lockFactory.createLock(block.timestamp + 100);
+      const tx2 = await lockFactory.createLock(block.timestamp + 200);
+      const tx3 = await lockFactory.createLock(block.timestamp + 300);
       // Have to get the receipts to get data
       const lock1 = (await tx1.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
       const lock2 = (await tx2.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
       const lock3 = (await tx3.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
       
-      expect((await lockFactory.getLocksByToken(token.address)).length).to.equal(3);
       const locks = await lockFactory.getLocksByAccount(owner.address);
       expect(locks.length).to.equal(3);
       expect(locks[0]).to.equal(lock1);
@@ -78,49 +81,32 @@ describe("TokenLockFactory", function () {
     it("Should revert if value is less than fee", async () => {
       await lockFactory.setFee(1000);
 
-      await expect(lockFactory.createLock(token.address, block.timestamp + 100, { value: 999 }))
+      await expect(lockFactory.createLock(block.timestamp + 100, { value: 999 }))
         .to.be.revertedWith("TokenLockFactory: value is less than required fee");
     });
 
     it("Should revert if unlock date is not in the future", async () => {
-      await expect(lockFactory.createLock(token.address, block.timestamp - 1))
+      await expect(lockFactory.createLock(block.timestamp - 1))
         .to.be.revertedWith("TokenLockFactory: new lock unlock date must be in the future");
     });
 
-    it("Should revert if address is not an ERC20 token", async () => {
-      await expect(lockFactory.createLock(owner.address, block.timestamp + 100))
-        .to.be.revertedWith("Transaction reverted: function call to a non-contract account");
-    });
-
-    it("Should revert if token has no supply", async () => {
-      const emptyToken = await Token.deploy("Token", "TOK", 0, owner.address);
-      await expect(lockFactory.createLock(emptyToken.address, block.timestamp + 100))
-        .to.be.revertedWith("TokenLock: token has no supply");
-    });
-
     it("Should create new lock with unlock date and emit event", async () => {
-      await lockFactory.createLock(token.address, block.timestamp + 12345);
-      const lockAddr = (await lockFactory.getLocksByToken(token.address))[0];
+      await lockFactory.createLock(block.timestamp + 12345);
+      const lockAddr = (await lockFactory.getLocksByAccount(owner.address))[0];
       const lock = await TokenLock.attach(lockAddr);
       expect(await lock.unlockDate()).to.equal(block.timestamp + 12345);
     });
 
     it("Should add new lock to account locks", async () => {
-      const tx = await lockFactory.createLock(token.address, block.timestamp + 100);
+      const tx = await lockFactory.createLock(block.timestamp + 100);
       const lock = (await tx.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
       expect(await lockFactory.getLocksByAccount(owner.address)).to.include(lock);
-    });
-
-    it("Should add new lock to token locks", async () => {
-      const tx = await lockFactory.createLock(token.address, block.timestamp + 100);
-      const lock = (await tx.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
-      expect(await lockFactory.getLocksByToken(token.address)).to.include(lock);
     });
   });
 
   describe("transferLock", () => {
     it("Should execute on lock ownership transfer and add and remove ownerships", async () => {
-      const tx = await lockFactory.createLock(token.address, block.timestamp + 100);
+      const tx = await lockFactory.createLock(block.timestamp + 100);
       const lockAddr = (await tx.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
       const lock = await TokenLock.attach(lockAddr);
 
