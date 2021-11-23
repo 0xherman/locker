@@ -55,9 +55,12 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 	}
 
 	/// Create lock with link to original factory
-	constructor(address factory, address tokenAddress) {
+	constructor(address factory, address tokenAddress, uint256 _unlockDate, address owner) {
 		_factory = factory;
 		token = IERC20(tokenAddress);
+		require(token.totalSupply() > 0, "TokenLock: token has no supply");
+		require(_unlockDate > block.timestamp, "TokenLock: new date must be in the future");
+		unlockDate = _unlockDate;
 
 		// Define administrator roles that can add/remove from given roles
 		_setRoleAdmin(DEFAULT_ADMIN_ROLE, DEFAULT_ADMIN_ROLE);
@@ -65,9 +68,12 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 		_setRoleAdmin(UNLOCK_ROLE, DEFAULT_ADMIN_ROLE);
 
 		// Add deployer to all roles
-		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
-		_setupRole(EXTEND_ROLE, _msgSender());
-		_setupRole(UNLOCK_ROLE, _msgSender());
+		_setupRole(DEFAULT_ADMIN_ROLE, owner);
+		_setupRole(EXTEND_ROLE, owner);
+		_setupRole(UNLOCK_ROLE, owner);
+		if (owner != _msgSender()) {
+			super.transferOwnership(owner);
+		}
 	}
 
 	/// Receive funds on contract
@@ -127,6 +133,6 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 		revokeRole(EXTEND_ROLE, _msgSender());
 		revokeRole(UNLOCK_ROLE, _msgSender());
 		revokeRole(DEFAULT_ADMIN_ROLE, _msgSender());
-		TokenLockFactory(_factory).transferLock(payable(this));
+		TokenLockFactory(_factory).transferLock(payable(this), _msgSender());
 	}
 }

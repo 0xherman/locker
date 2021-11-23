@@ -36,22 +36,22 @@ contract TokenLockFactory is Ownable {
 	function createLock(address tokenAddress, uint256 unlockDate) payable external returns (address) {
 		require(msg.value >= fee, "TokenLockFactory: value is less than required fee");
 		require(unlockDate > block.timestamp, "TokenLockFactory: new lock unlock date must be in the future");
-		_locksByAccount[_msgSender()].add(tokenAddress);
-		TokenLock newLock = new TokenLock(address(this), tokenAddress);
+		TokenLock newLock = new TokenLock(address(this), tokenAddress, unlockDate, _msgSender());
+		_locksByAccount[_msgSender()].add(address(newLock));
 		_locksByToken[tokenAddress].add(address(newLock));
-		newLock.extendUnlockDate(unlockDate);
 		emit LockCreated(address(newLock), tokenAddress, unlockDate);
 		return address(newLock);
 	}
 
 	/// Transfer stored data on lock ownership (does not actually change owners on the lock)
-	/// @dev Assumed the call is made by previous lock owner, so removes lock from _msgSender mapping
+	/// @dev Assumed the call is made by previous lock owner
 	/// @param lockAddress The lock address to ensure owner mapping is correct
-	function transferLock(address payable lockAddress) external {
+	/// @param oldOwner The old owner to try to remove
+	function transferLock(address payable lockAddress, address oldOwner) external {
 		TokenLock lock = TokenLock(lockAddress);
 		address owner = lock.owner();
 		_locksByAccount[owner].add(lockAddress);
-		_locksByAccount[_msgSender()].remove(lockAddress);
+		_locksByAccount[oldOwner].remove(lockAddress);
 	}
 
 	/// Set lock creation fee

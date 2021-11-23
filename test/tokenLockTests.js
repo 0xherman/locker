@@ -18,7 +18,7 @@ describe("TokenLock", function () {
 
   beforeEach(async () => {
     [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
-
+    block = await ethers.provider.getBlock();
     const Token = await ethers.getContractFactory("TestERC20");
     token = await Token.deploy("Test", "TEST", 100000, owner.address);
 
@@ -26,12 +26,12 @@ describe("TokenLock", function () {
     tokenFactory = await TokenLockFactory.deploy();
 
     const TokenLock = await ethers.getContractFactory("TokenLock");
-    tokenLock = await TokenLock.deploy(tokenFactory.address, token.address);
+    tokenLock = await TokenLock.deploy(tokenFactory.address, token.address, block.timestamp + 10, owner.address);
     DEFAULT_ADMIN_ROLE = await tokenLock.DEFAULT_ADMIN_ROLE();
     UNLOCK_ROLE = await tokenLock.UNLOCK_ROLE();
     EXTEND_ROLE = await tokenLock.EXTEND_ROLE();
 
-    block = await ethers.provider.getBlock();
+    
   });
 
   describe("extendUnlockDate", () => {
@@ -56,7 +56,8 @@ describe("TokenLock", function () {
     });
 
     it("Should revert if in the past", async () => {
-      await expect(tokenLock.extendUnlockDate(block.timestamp - 100))
+      ethers.provider.send("evm_setNextBlockTimestamp", [block.timestamp + 1000]);
+      await expect(tokenLock.extendUnlockDate(block.timestamp + 900))
         .to.be.revertedWith("TokenLock: new date must be in the future");
     });
 
@@ -78,6 +79,10 @@ describe("TokenLock", function () {
   });
 
   describe("unlock", () => {
+    beforeEach(async () => {
+      await ethers.provider.send("evm_increaseTime", [500]);
+    });
+
     it("Should revert if not in any roles", async () => {
       await expect(tokenLock.connect(addr1).unlock(100, addr2.address))
         .to.be.revertedWith("TokenLock: caller does not have unlock role");
@@ -132,6 +137,10 @@ describe("TokenLock", function () {
   });
 
   describe("unlockToken", () => {
+    beforeEach(async () => {
+      await ethers.provider.send("evm_increaseTime", [500]);
+    });
+
     it("Should revert if not in any roles", async () => {
       await token.transfer(tokenLock.address, 500);
       await expect(tokenLock.connect(addr1).unlockToken(token.address, 100, addr2.address))
@@ -217,8 +226,9 @@ describe("TokenLock", function () {
     });
 
     it("Should revert if lock is not in the future", async () => {
+      await ethers.provider.send("evm_increaseTime", [500]);
       await token.transfer(tokenLock.address, 500);
-      await expect(tokenLock.splitTokenLock(token.address, 100, block.timestamp))
+      await expect(tokenLock.splitTokenLock(token.address, 100, block.timestamp + 50))
         .to.be.revertedWith("TokenLock: new lock unlock date must be in the future");
     });
 
