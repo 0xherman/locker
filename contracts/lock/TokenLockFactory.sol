@@ -12,11 +12,8 @@ contract TokenLockFactory is Ownable {
 
 	uint256 public fee;
 
-	/// Given a token address, get addresses of locks for the token
-	mapping(address => address[]) public locksByToken;
-
-	/// Given an account, get address of locks owned by account
-	mapping(address => EnumerableSet.AddressSet) private locksByAccount;
+	mapping(address => EnumerableSet.AddressSet) private _locksByToken;
+	mapping(address => EnumerableSet.AddressSet) private _locksByAccount;
 
 	/// Create lock event to emit on creation
 	/// @param newLock The new lock's address
@@ -24,15 +21,25 @@ contract TokenLockFactory is Ownable {
 	/// @param unlockDate The new lock's unlock date
 	event LockCreated(address newLock, address tokenAddress, uint256 unlockDate);
 
+	/// Given a token address, get addresses of locks for the token
+	function getLocksByToken(address tokenAddress) external view returns (address[] memory) {
+		return EnumerableSet.values(_locksByToken[tokenAddress]);
+	}
+
+	/// Given an account, get address of locks owned by account
+	function getLocksByAccount(address account) external view returns (address[] memory) {
+		return EnumerableSet.values(_locksByAccount[account]);
+	}
+
 	/// Create a new lock with unlockDate
 	/// @param unlockDate The lock's unlock date
 	function createLock(address tokenAddress, uint256 unlockDate) payable external returns (address) {
 		require(msg.value >= fee, "TokenLockFactory: value is less than required fee");
 		require(unlockDate > block.timestamp, "TokenLockFactory: new lock unlock date must be in the future");
+		_locksByAccount[_msgSender()].add(tokenAddress);
 		TokenLock newLock = new TokenLock(address(this), tokenAddress);
+		_locksByToken[tokenAddress].add(address(newLock));
 		newLock.extendUnlockDate(unlockDate);
-		locksByToken[tokenAddress].push(address(newLock));
-		locksByAccount[_msgSender()].add(tokenAddress);
 		emit LockCreated(address(newLock), tokenAddress, unlockDate);
 		return address(newLock);
 	}
@@ -43,8 +50,8 @@ contract TokenLockFactory is Ownable {
 	function transferLock(address payable lockAddress) external {
 		TokenLock lock = TokenLock(lockAddress);
 		address owner = lock.owner();
-		locksByAccount[owner].add(lockAddress);
-		locksByAccount[_msgSender()].remove(lockAddress);
+		_locksByAccount[owner].add(lockAddress);
+		_locksByAccount[_msgSender()].remove(lockAddress);
 	}
 
 	/// Set lock creation fee

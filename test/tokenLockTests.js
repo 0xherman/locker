@@ -5,6 +5,7 @@ const { ethers } = require("hardhat");
 describe("TokenLock", function () {
 
   let tokenLock;
+  let tokenFactory;
   let token;
   let owner;
   let addr1;
@@ -15,26 +16,23 @@ describe("TokenLock", function () {
   let UNLOCK_ROLE;
   let EXTEND_ROLE;
 
-
-  async function deploy() {
+  beforeEach(async () => {
     [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
 
     const Token = await ethers.getContractFactory("TestERC20");
     token = await Token.deploy("Test", "TEST", 100000, owner.address);
 
     const TokenLockFactory = await ethers.getContractFactory("TokenLockFactory");
-    const factory = await TokenLockFactory.deploy();
+    tokenFactory = await TokenLockFactory.deploy();
 
     const TokenLock = await ethers.getContractFactory("TokenLock");
-    tokenLock = await TokenLock.deploy(factory.address, token.address);
+    tokenLock = await TokenLock.deploy(tokenFactory.address, token.address);
     DEFAULT_ADMIN_ROLE = await tokenLock.DEFAULT_ADMIN_ROLE();
     UNLOCK_ROLE = await tokenLock.UNLOCK_ROLE();
     EXTEND_ROLE = await tokenLock.EXTEND_ROLE();
 
     block = await ethers.provider.getBlock();
-  }
-
-  beforeEach(deploy);
+  });
 
   describe("extendUnlockDate", () => {
     it("Should revert if not in any roles", async () => {
@@ -218,7 +216,7 @@ describe("TokenLock", function () {
         .to.be.revertedWith("TokenLock: new lock unlock date cannot be before current lock unlock date");
     });
 
-    it("Should revert if after the unlock date", async () => {
+    it("Should revert if lock is not in the future", async () => {
       await token.transfer(tokenLock.address, 500);
       await expect(tokenLock.splitTokenLock(token.address, 100, block.timestamp))
         .to.be.revertedWith("TokenLock: new lock unlock date must be in the future");
@@ -232,9 +230,11 @@ describe("TokenLock", function () {
     it("Should split lock if valid and DEFAULT_ADMIN_ROLE and emit an event", async () => {
       await tokenLock.extendUnlockDate(block.timestamp + 100);
       await token.transfer(tokenLock.address, 500);
-      let newLock = await expect(tokenLock.splitTokenLock(token.address, 250, block.timestamp + 1000))
-        .to.emit(tokenLock, "LockSplit");
+      await expect(tokenLock.splitTokenLock(token.address, 250, block.timestamp + 1000))
+        .to.emit(tokenLock, "TokenLockSplit");
 
+      // tokenLock was instantiated outside of factory so newLock is first in factory
+      const newLock = (await tokenFactory.getLocksByToken(token.address))[0];
       expect(await token.balanceOf(newLock)).to.equal(250);
       expect(await token.balanceOf(tokenLock.address)).to.equal(250);
     });
