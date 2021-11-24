@@ -14,6 +14,7 @@ contract TokenLockFactory is Ownable {
 
 	mapping(address => EnumerableSet.AddressSet) private _locksByToken;
 	mapping(address => EnumerableSet.AddressSet) private _locksByAccount;
+	mapping(string => address) private _customNames;
 
 	EnumerableSet.AddressSet private _approvedFactories;
 
@@ -23,6 +24,8 @@ contract TokenLockFactory is Ownable {
 	/// @param unlockDate The new lock's unlock date
 	event LockCreated(address newLock, address owner, uint256 unlockDate);
 
+	/// Receive funds on contract
+	receive() external payable {}
 
 	/// PUBLIC VIEWS ///
 
@@ -36,6 +39,11 @@ contract TokenLockFactory is Ownable {
 		return _locksByAccount[account].values();
 	}
 
+	/// Given a custom name return the lock address
+	function getLockByName(string memory name) external view returns (address) {
+		return _customNames[name];
+	}
+
 
 	/// PUBLIC FUNCTIONS ///
 
@@ -44,7 +52,7 @@ contract TokenLockFactory is Ownable {
 	function createLock(uint256 unlockDate) payable external returns (address) {
 		require(msg.value >= fee, "TokenLockFactory: value is less than required fee");
 		require(unlockDate > block.timestamp, "TokenLockFactory: new lock unlock date must be in the future");
-		TokenLock newLock = new TokenLock(address(this), unlockDate, _msgSender());
+		TokenLock newLock = new TokenLock(payable(this), unlockDate, _msgSender());
 		_locksByAccount[_msgSender()].add(address(newLock));
 		emit LockCreated(address(newLock), _msgSender(), unlockDate);
 		return address(newLock);
@@ -80,10 +88,18 @@ contract TokenLockFactory is Ownable {
 	/// LOCK ADMINISTRATION ///
 
 	/// Change factory address
-	function changeFactory(address payable lockAddress, address factoryAddress) external {
+	function changeFactory(address payable lockAddress, address payable factoryAddress) external {
 		require(_approvedFactories.contains(factoryAddress), "TokenLockFactory: factory is not valid");
 		require(TokenLock(lockAddress).owner() == _msgSender(), "TokenLockFactory: caller is not lock owner");
 		TokenLock(lockAddress).changeFactory(factoryAddress);
+	}
+
+	/// Change factory address
+	function setCustomName(address payable lockAddress, string memory name) payable external {
+		require(msg.value >= fee, "TokenLockFactory: value is less than required fee");
+		require(TokenLock(lockAddress).owner() == _msgSender(), "TokenLockFactory: caller is not lock owner");
+		require(_customNames[name] == address(0), "TokenLockFactory: custom name is already in use");
+		_customNames[name] = lockAddress;
 	}
 
 
@@ -94,6 +110,11 @@ contract TokenLockFactory is Ownable {
 		fee = _fee;
 	}
 
+	/// Override a custom name in case of misuse
+	function overrideCustomName(address lockAddress, string memory name) external onlyOwner {
+		_customNames[name] = lockAddress;
+	}
+
 	/// Add approved factory
 	function addApprovedFactory(address factoryAddress) external onlyOwner {
 		_approvedFactories.add(factoryAddress);
@@ -102,5 +123,13 @@ contract TokenLockFactory is Ownable {
 	/// Remove approved factory
 	function removeApprovedFactory(address factoryAddress) external onlyOwner {
 		_approvedFactories.remove(factoryAddress);
+	}
+
+	/// Withdraw native token to recipient address
+	/// @param amount The amount of native currency to withdraw
+	/// @param recipient The recipient of the withdrawn funds
+	function withdraw(uint256 amount, address recipient) external onlyOwner returns (bool success) {
+		require(amount <= address(this).balance, "TokenLock: not enough held in lock");
+		(success,) = payable(recipient).call{value: amount}("");
 	}
 }

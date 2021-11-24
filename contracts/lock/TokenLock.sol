@@ -20,7 +20,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 	EnumerableSet.AddressSet private _tokens;
 
 	/// Factory address
-	address private _factory;
+	address payable private _factory;
 
 	/// Events to emit after value changes
 	event UnlockDateExtended(uint256 unlockDate);
@@ -52,7 +52,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 	}
 
 	/// Create lock with link to original factory
-	constructor(address factory, uint256 _unlockDate, address owner) {
+	constructor(address payable factory, uint256 _unlockDate, address owner) {
 		require(_unlockDate > block.timestamp, "TokenLock: new date must be in the future");
 		_factory = factory;
 		unlockDate = _unlockDate;
@@ -145,7 +145,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 		for (uint256 i = 0; i < length; i++) {
 			IERC20 token = IERC20(_tokens.at(i));
 			uint256 amount = token.balanceOf(address(this));
-			IERC20(_tokens.at(i)).transfer(newLock, amount);
+			token.transfer(newLock, amount);
 		}
 		emit TokenLockMigrated(address(this), newLock);
 	}
@@ -179,7 +179,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 	}
 
 	/// Update the factory address
-	function changeFactory(address factoryAddress) external {
+	function changeFactory(address payable factoryAddress) external {
 		require(_msgSender() == _factory, "TokenLock: only the factory can update factory address");
 		_factory = factoryAddress;
 	}
