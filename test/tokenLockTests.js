@@ -271,15 +271,14 @@ describe("TokenLock", function () {
         .to.be.revertedWith("TokenLock: caller does not have admin role");
     });
 
-    it("Should split lock if valid and DEFAULT_ADMIN_ROLE and emit an event", async () => {
+    it("Should migrate lock if valid and DEFAULT_ADMIN_ROLE and emit an event", async () => {
       await tokenLock.extendUnlockDate(block.timestamp + 100);
       await token.transfer(tokenLock.address, 500);
       await tokenLock.trackToken(token.address);
       await expect(tokenLock.migrateTokenLock())
         .to.emit(tokenLock, "TokenLockMigrated");
 
-      // tokenLock was instantiated outside of factory so newLock is first in factory
-      const newLock = (await tokenFactory.getLocksByToken(token.address))[0];
+      const newLock = (await tokenFactory.getLocksByToken(token.address))[1];
       expect(await token.balanceOf(newLock)).to.equal(500);
       expect(await token.balanceOf(tokenLock.address)).to.equal(0);
     });

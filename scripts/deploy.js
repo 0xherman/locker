@@ -72,6 +72,7 @@ async function localDeploy() {
   const tx = await factory.createLock(block.timestamp + 1000);
   const lock = (await tx.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
   console.log("TokenLock contract deployed to:", lock);
+  await factory.setCustomName(lock, "retromoon");
 }
 
 // We recommend this pattern to be able to use async/await everywhere

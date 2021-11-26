@@ -143,6 +143,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 		newLock = TokenLockFactory(_factory).createLock{value: msg.value}(unlockDate);
 		uint256 length = _tokens.length();
 		for (uint256 i = 0; i < length; i++) {
+			TokenLock(payable(newLock)).trackToken(_tokens.at(i));
 			IERC20 token = IERC20(_tokens.at(i));
 			uint256 amount = token.balanceOf(address(this));
 			token.transfer(newLock, amount);
