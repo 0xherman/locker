@@ -4,6 +4,7 @@ const { ethers } = require("hardhat");
 
 describe("TokenLock", function () {
 
+  let TokenLock;
   let tokenLock;
   let tokenFactory;
   let token;
@@ -25,12 +26,14 @@ describe("TokenLock", function () {
     const TokenLockFactory = await ethers.getContractFactory("TokenLockFactory");
     tokenFactory = await TokenLockFactory.deploy();
 
-    const TokenLock = await ethers.getContractFactory("TokenLock");
+    TokenLock = await ethers.getContractFactory("TokenLock");
     tokenLock = await TokenLock.deploy(tokenFactory.address, block.timestamp + 10, owner.address);
     DEFAULT_ADMIN_ROLE = await tokenLock.DEFAULT_ADMIN_ROLE();
     UNLOCK_ROLE = await tokenLock.UNLOCK_ROLE();
     EXTEND_ROLE = await tokenLock.EXTEND_ROLE();
-
+    const lockOwner = await tokenLock.owner();
+    console.log("init owner:", lockOwner);
+    await tokenFactory.transferLock(tokenLock.address, owner.address);
     
   });
 
@@ -244,9 +247,11 @@ describe("TokenLock", function () {
         .to.emit(tokenLock, "TokenLockSplit");
 
       // tokenLock was instantiated outside of factory so newLock is first in factory
-      const newLock = (await tokenFactory.getLocksByToken(token.address))[0];
-      expect(await token.balanceOf(newLock)).to.equal(250);
+      const newLockAddr = (await tokenFactory.getLocksByToken(token.address))[0];
+      expect(await token.balanceOf(newLockAddr)).to.equal(250);
       expect(await token.balanceOf(tokenLock.address)).to.equal(250);
+      const newLock = await TokenLock.attach(newLockAddr);
+      expect(await newLock.owner()).to.equal(owner.address);
     });
   });
 
@@ -281,6 +286,15 @@ describe("TokenLock", function () {
       const newLock = (await tokenFactory.getLocksByToken(token.address))[1];
       expect(await token.balanceOf(newLock)).to.equal(500);
       expect(await token.balanceOf(tokenLock.address)).to.equal(0);
+    });
+
+    it("Should migrate lock with current owner as new owner", async () => {
+      await token.transfer(tokenLock.address, 500);
+      await tokenLock.migrateTokenLock();
+
+      const newLockAddr = (await tokenFactory.getLocksByAccount(owner.address))[1];
+      const newLock = await TokenLock.attach(newLockAddr);
+      expect(await newLock.owner()).to.equal(await tokenLock.owner());
     });
   });
 });

@@ -67,9 +67,8 @@ contract TokenLockFactory is Ownable {
 	/// @param oldOwner The old owner to try to remove
 	function transferLock(address payable lockAddress, address oldOwner) external {
 		address owner = TokenLock(lockAddress).owner();
-		require(owner != oldOwner, "TokenLockFactory: lock is not transferred");
-		_locksByAccount[owner].add(lockAddress);
 		_locksByAccount[oldOwner].remove(lockAddress);
+		_locksByAccount[owner].add(lockAddress);
 	}
 
 	/// Add a lock to token cache

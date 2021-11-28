@@ -135,6 +135,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 		newLock = TokenLockFactory(_factory).createLock{value: msg.value}(unlockDate);
 		TokenLock(payable(newLock)).trackToken(tokenAddress);
 		IERC20(tokenAddress).transfer(newLock, amount);
+		TokenLock(payable(newLock)).transferOwnership(_msgSender());
 		emit TokenLockSplit(tokenAddress, amount, newLock);
 	}
 
@@ -148,6 +149,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 			uint256 amount = token.balanceOf(address(this));
 			token.transfer(newLock, amount);
 		}
+		TokenLock(payable(newLock)).transferOwnership(_msgSender());
 		emit TokenLockMigrated(address(this), newLock);
 	}
 
