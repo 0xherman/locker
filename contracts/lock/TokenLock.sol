@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "./TokenLockFactory.sol";
+import "./ITokenLockFactory.sol";
 
 /// @title TokenLock
 /// @notice TokenLock Contract for Retromoon liquidity / token lock
@@ -132,7 +132,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 		require(IERC20(tokenAddress).balanceOf(address(this)) >= amount, "TokenLock: not enough tokens held in lock");
 		require(_unlockDate >= unlockDate, "TokenLock: new lock unlock date cannot be before current lock unlock date");
 		require(_unlockDate > block.timestamp, "TokenLock: new lock unlock date must be in the future");
-		newLock = TokenLockFactory(_factory).createLock{value: msg.value}(unlockDate);
+		newLock = ITokenLockFactory(_factory).createLock{value: msg.value}(unlockDate);
 		TokenLock(payable(newLock)).trackToken(tokenAddress);
 		IERC20(tokenAddress).transfer(newLock, amount);
 		TokenLock(payable(newLock)).transferOwnership(_msgSender());
@@ -141,7 +141,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 
 	/// Migrate a lock completely to a new lock
 	function migrateTokenLock() payable external canMove returns (address newLock) {
-		newLock = TokenLockFactory(_factory).createLock{value: msg.value}(unlockDate);
+		newLock = ITokenLockFactory(_factory).createLock{value: msg.value}(unlockDate);
 		uint256 length = _tokens.length();
 		for (uint256 i = 0; i < length; i++) {
 			TokenLock(payable(newLock)).trackToken(_tokens.at(i));
@@ -156,14 +156,14 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 	/// Add a token to tracked list
 	function trackToken(address tokenAddress) external onlyOwner {
 		_tokens.add(tokenAddress);
-		TokenLockFactory(_factory).trackToken(payable(this), tokenAddress);
+		ITokenLockFactory(_factory).trackToken(payable(this), tokenAddress);
 		emit TokenTracked(tokenAddress);
 	}
 
 	/// Remove a tracked token from liest
 	function untrackToken(address tokenAddress) external onlyOwner {
 		_tokens.remove(tokenAddress);
-		TokenLockFactory(_factory).untrackToken(payable(this), tokenAddress);
+		ITokenLockFactory(_factory).untrackToken(payable(this), tokenAddress);
 		emit TokenUntracked(tokenAddress);
 	}
 
@@ -178,7 +178,7 @@ contract TokenLock is AccessControlEnumerable, Ownable {
 		revokeRole(EXTEND_ROLE, _msgSender());
 		revokeRole(UNLOCK_ROLE, _msgSender());
 		revokeRole(DEFAULT_ADMIN_ROLE, _msgSender());
-		TokenLockFactory(_factory).transferLock(payable(this), _msgSender());
+		ITokenLockFactory(_factory).transferLock(payable(this), _msgSender());
 	}
 
 	/// Update the factory address

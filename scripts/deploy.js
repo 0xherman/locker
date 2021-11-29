@@ -69,7 +69,7 @@ async function localDeploy() {
   await factory.deployed();
   console.log("TokenLockFactory contract deployed to:", factory.address);
 
-  const tx = await factory.createLock(block.timestamp + 1000);
+  const tx = await factory.createLock(block.timestamp + 1000, owner.address);
   const lock = (await tx.wait()).events.filter((x) => x.event == "LockCreated")[0].args[0];
   console.log("TokenLock contract deployed to:", lock);
   await factory.setCustomName(lock, "retromoon");

@@ -31,8 +31,6 @@ describe("TokenLock", function () {
     DEFAULT_ADMIN_ROLE = await tokenLock.DEFAULT_ADMIN_ROLE();
     UNLOCK_ROLE = await tokenLock.UNLOCK_ROLE();
     EXTEND_ROLE = await tokenLock.EXTEND_ROLE();
-    const lockOwner = await tokenLock.owner();
-    console.log("init owner:", lockOwner);
     await tokenFactory.transferLock(tokenLock.address, owner.address);
     
   });
